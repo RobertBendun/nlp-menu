@@ -17,7 +17,7 @@ void on_input(std::string_view sv)
 		nlp = py::module_::import("nlp");
 	});
 
-	nlp.attr("echo")(sv);
+	nlp.attr("get_suggestions")(sv);
 }
 
 extern "C"

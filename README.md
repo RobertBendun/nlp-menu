@@ -1,5 +1,9 @@
 # nlp-menu
 
+# Why using daemon?
+
+Loading spacy language info takes around 10 seconds, time to long for any launcher.
+
 # Dostępne komendy
 
 - [ ] Wpisanie adresu powoduje otwarcie przeglądarki z podanym adresem
