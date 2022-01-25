@@ -1,0 +1,7 @@
+.ccls-cache
+config.h
+dmenu
+*.o
+stest
+nlp-menu
+__pycache__

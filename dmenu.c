@@ -19,6 +19,8 @@
 #include "drw.h"
 #include "util.h"
 
+#include "engine.h"
+
 /* macros */
 #define INTERSECT(x,y,w,h,r)  (MAX(0, MIN((x)+(w),(r).x_org+(r).width)  - MAX((x),(r).x_org)) \
                              * MAX(0, MIN((y)+(h),(r).y_org+(r).height) - MAX((y),(r).y_org)))
@@ -220,6 +222,8 @@ match(void)
 	int i, tokc = 0;
 	size_t len, textsize;
 	struct item *item, *lprefix, *lsubstr, *prefixend, *substrend;
+
+	on_input_callback((char const*)text);
 
 	strcpy(buf, text);
 	/* separate input text into tokens to be matched individually */
@@ -473,6 +477,7 @@ insert:
 		break;
 	case XK_Return:
 	case XK_KP_Enter:
+		// uwu Here we can hijack provided output and execute whatever action we desire
 		puts((sel && !(ev->state & ShiftMask)) ? sel->text : text);
 		if (!(ev->state & ControlMask)) {
 			cleanup();
@@ -535,6 +540,8 @@ readstdin(void)
 	char buf[sizeof text], *p;
 	size_t i, imax = 0, size = 0;
 	unsigned int tmpmax = 0;
+
+	stdin = freopen("./commands", "r", stdin);
 
 	/* read each line from stdin and add it to the item list */
 	for (i = 0; fgets(buf, sizeof buf, stdin); i++) {
@@ -710,6 +717,7 @@ main(int argc, char *argv[])
 {
 	XWindowAttributes wa;
 	int i, fast = 0;
+	lines = 5;
 
 	for (i = 1; i < argc; i++)
 		/* these options take no arguments */

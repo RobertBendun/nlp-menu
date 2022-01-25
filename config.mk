@@ -19,12 +19,13 @@ FREETYPEINC = /usr/include/freetype2
 #FREETYPEINC = $(X11INC)/freetype2
 
 # includes and libs
-INCS = -I$(X11INC) -I$(FREETYPEINC)
-LIBS = -L$(X11LIB) -lX11 $(XINERAMALIBS) $(FREETYPELIBS)
+INCS = -I$(X11INC) -I$(FREETYPEINC) $(shell pkg-config -cflags python3)
+LIBS = -L$(X11LIB) -lX11 $(XINERAMALIBS) $(FREETYPELIBS) $(shell pkg-config -libs python3-embed)
 
 # flags
-CPPFLAGS = -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\" $(XINERAMAFLAGS)
-CFLAGS   = -std=c99 -pedantic -Wall -Os $(INCS) $(CPPFLAGS)
+CPPFLAGS = -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\" $(XINERAMAFLAGS) $(INCS)
+CFLAGS   = -std=c99 -pedantic -Wall -Os $(CPPFLAGS)
+CXXFLAGS =  -std=c++20 -Wall -Wextra $(CPPFLAGS)
 LDFLAGS  = $(LIBS)
 
 # compiler and linker
