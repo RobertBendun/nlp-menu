@@ -30,11 +30,9 @@
 /* enums */
 enum { SchemeNorm, SchemeSel, SchemeOut, SchemeLast }; /* color schemes */
 
-struct item {
-	char *text;
-	struct item *left, *right;
-	int out;
-};
+struct item *items = NULL;
+struct item *prev, *curr, *next, *sel;
+struct item *matches, *matchend;
 
 static char text[BUFSIZ] = "";
 static char *embed;
@@ -42,9 +40,6 @@ static int bh, mw, mh;
 static int inputw = 0, promptw;
 static int lrpad; /* sum of left and right padding */
 static size_t cursor;
-static struct item *items = NULL;
-static struct item *matches, *matchend;
-static struct item *prev, *curr, *next, *sel;
 static int mon = -1, screen;
 
 static Atom clip, utf8;
@@ -91,7 +86,7 @@ calcoffsets(void)
 			break;
 }
 
-static void
+void
 cleanup(void)
 {
 	size_t i;
@@ -225,6 +220,7 @@ match(void)
 
 	on_input_callback((char const*)text);
 
+#if 0
 	strcpy(buf, text);
 	/* separate input text into tokens to be matched individually */
 	for (s = strtok(buf, " "); s; tokv[tokc - 1] = s, s = strtok(NULL, " "))
@@ -265,6 +261,7 @@ match(void)
 		matchend = substrend;
 	}
 	curr = sel = matches;
+#endif
 	calcoffsets();
 }
 
@@ -477,7 +474,7 @@ insert:
 		break;
 	case XK_Return:
 	case XK_KP_Enter:
-		// uwu Here we can hijack provided output and execute whatever action we desire
+		choose();
 		puts((sel && !(ev->state & ShiftMask)) ? sel->text : text);
 		if (!(ev->state & ControlMask)) {
 			cleanup();
@@ -541,7 +538,7 @@ readstdin(void)
 	size_t i, imax = 0, size = 0;
 	unsigned int tmpmax = 0;
 
-	stdin = freopen("./commands", "r", stdin);
+	stdin = freopen("/dev/null", "r", stdin);
 
 	/* read each line from stdin and add it to the item list */
 	for (i = 0; fgets(buf, sizeof buf, stdin); i++) {
@@ -670,7 +667,7 @@ setup(void)
 		mw = wa.width;
 	}
 	promptw = (prompt && *prompt) ? TEXTW(prompt) - lrpad / 4 : 0;
-	inputw = MIN(inputw, mw/3);
+	inputw = MAX(inputw, mw/3);
 	match();
 
 	/* create menu window */

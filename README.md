@@ -6,8 +6,8 @@ Loading spacy language info takes around 10 seconds, time to long for any launch
 
 # Dostępne komendy
 
-- [ ] Wpisanie adresu powoduje otwarcie przeglądarki z podanym adresem
-- [ ] Wpisanie adresu email powoduje otwarcie klienta pocztowego
+- [x] Wpisanie adresu powoduje otwarcie przeglądarki z podanym adresem
+- [x] Wpisanie adresu email powoduje otwarcie klienta pocztowego
 - [ ] "Otwórz ..." podowuje wszystkie akcje powyżej opisane
 - [ ] "Odtwórz ..." powoduje odtworzenie filmu znalezionego na dysku
 - [ ] "Zamknij ..." powoduje zamknięcie wszystkich instancji programu dalej wymienionego

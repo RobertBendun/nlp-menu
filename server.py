@@ -19,7 +19,7 @@ def compute_suggestions():
     data = cast(dict[str, str], request.get_json())
     result = nlp(data["input"])
 
-    return { "suggestions": [ token.text for token in result ] }
+    return { "tokens": [ token.text for token in result ] }
 
 # https://refspecs.linuxfoundation.org/FHS_3.0/fhs/ch05s09.html
 # Since /var/lock is not accessible by user, we use XDG_RUNTIME_DIR
