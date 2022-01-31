@@ -19,8 +19,8 @@ FREETYPEINC = /usr/include/freetype2
 #FREETYPEINC = $(X11INC)/freetype2
 
 # includes and libs
-INCS = -I$(X11INC) -I$(FREETYPEINC) $(shell pkg-config -cflags python3)
-LIBS = -L$(X11LIB) -lX11 $(XINERAMALIBS) $(FREETYPELIBS) $(shell pkg-config -libs python3-embed)
+INCS = -I$(X11INC) -I$(FREETYPEINC) -I./lexy/include/
+LIBS = -L$(X11LIB) -lX11 $(XINERAMALIBS) $(FREETYPELIBS)
 
 # flags
 CPPFLAGS = -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\" $(XINERAMAFLAGS) $(INCS)

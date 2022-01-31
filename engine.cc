@@ -7,42 +7,22 @@
 #include <string_view>
 #include <vector>
 #include <utility>
+#include <thread>
+#include <mutex>
+#include <atomic>
 
-#include <pybind11/embed.h>
-#include <signal.h>
 #include <sys/wait.h>
+#include <unistd.h>
+#include <regex>
 
-namespace py = pybind11;
+#include "lisp.cc"
 
-py::scoped_interpreter *python = nullptr;
-
-py::module_ nlp;
-
-std::once_flag python_initialized;
-
-std::vector<std::pair<std::string, py::object>> sugg;
-
-void on_input(std::string_view sv)
+void fill_items(std::vector<std::string>& sugg)
 {
-	std::call_once(python_initialized, [] {
-		python = new py::scoped_interpreter;
-		nlp = py::module_::import("client");
-	});
-
-	auto suggestions = nlp.attr("get_suggestions")(sv).cast<py::list>();
-
-	sugg.clear();
-
-	for (auto s : suggestions) {
-		auto tup = s.cast<py::tuple>();
-		assert(tup.size() == 2);
-		sugg.push_back({ tup[0].cast<std::string>(), tup[1] });
-	}
-
 	items = (struct item *)realloc(items, sizeof(struct item) * sugg.size());
 
 	for (auto i = 0u; i < sugg.size(); ++i) {
-		items[i].text = sugg[i].first.data();
+		items[i].text = sugg[i].data();
 		items[i].left = i == 0 ? nullptr : &items[i-1];
 		items[i].right = i == sugg.size()-1 ? nullptr : &items[i+1];
 	}
@@ -55,6 +35,49 @@ void on_input(std::string_view sv)
 		prev = nullptr;
 		next = items->right;
 	}
+}
+
+Suggestion_Tree tree;
+std::once_flag tree_initialized;
+std::vector<std::string> suggestions;
+
+Match *root = nullptr;
+
+void on_input(std::string_view sv)
+{
+	std::call_once(tree_initialized, [] {
+		std::ifstream stream("./wip.lisp");
+		std::string file{std::istreambuf_iterator<char>(stream), {}};
+		std::string_view code{file};
+
+
+		auto rules = lisp::Value::list();
+		rules.push_front(lisp::Value::symbol("do"));
+		for (;;) {
+			auto rule = lisp::read(code);
+			if (rule.kind == lisp::Value::Kind::Nil)
+				break;
+			rules.push_back(std::move(rule));
+		}
+
+		tree.eval(rules);
+		tree.optimize();
+	});
+
+	suggestions.clear();
+
+	if (root == nullptr) { root = &tree; }
+	// Skip empty nodes
+	while (std::get_if<std::monostate>(root) && root->next.size() == 1) root = root->next.front().get();
+
+	// TODO Walk tree to get good subset of suggestions
+	for (auto const& c : root->next) {
+		auto var = c.get();
+		if (auto x = std::get_if<std::string>(var)) { suggestions.push_back(*x); continue; }
+		if (auto x = std::get_if<fs::path>(var)) { suggestions.push_back(x->filename().string()); continue; }
+	}
+
+	fill_items(suggestions);
 }
 
 extern "C"
@@ -81,7 +104,7 @@ extern "C"
 		close(STDOUT_FILENO);
 		dup2(pipe[1], STDOUT_FILENO);
 		close(pipe[1]);
-		sugg[sel - items].second();
+		// place suggestion
 		close(STDOUT_FILENO);
 
 		cleanup();

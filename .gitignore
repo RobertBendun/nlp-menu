@@ -5,3 +5,7 @@ dmenu
 stest
 nlp-menu
 __pycache__
+compile_commands.json
+lisp
+*.dot
+*.svg
