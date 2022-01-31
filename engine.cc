@@ -16,13 +16,14 @@
 #include <regex>
 
 #include "lisp.cc"
+#include "unicode.cc"
 
-void fill_items(std::vector<std::string>& sugg)
+void fill_items(std::vector<std::pair<std::string, Match const*>>& sugg)
 {
 	items = (struct item *)realloc(items, sizeof(struct item) * sugg.size());
 
 	for (auto i = 0u; i < sugg.size(); ++i) {
-		items[i].text = sugg[i].data();
+		items[i].text = sugg[i].first.data();
 		items[i].left = i == 0 ? nullptr : &items[i-1];
 		items[i].right = i == sugg.size()-1 ? nullptr : &items[i+1];
 	}
@@ -37,21 +38,24 @@ void fill_items(std::vector<std::string>& sugg)
 	}
 }
 
+lisp::Value rules;
 Suggestion_Tree tree;
 std::once_flag tree_initialized;
-std::vector<std::string> suggestions;
+std::vector<std::pair<std::string, Match const*>> suggestions;
 
 Match *root = nullptr;
 
 void on_input(std::string_view sv)
 {
+	std::string lowercase = utf8::to_lower(trim(sv));
+	sv = lowercase;
+
 	std::call_once(tree_initialized, [] {
 		std::ifstream stream("./wip.lisp");
 		std::string file{std::istreambuf_iterator<char>(stream), {}};
 		std::string_view code{file};
 
-
-		auto rules = lisp::Value::list();
+		rules = lisp::Value::list();
 		rules.push_front(lisp::Value::symbol("do"));
 		for (;;) {
 			auto rule = lisp::read(code);
@@ -60,24 +64,92 @@ void on_input(std::string_view sv)
 			rules.push_back(std::move(rule));
 		}
 
+		lisp::dump(rules);
 		tree.eval(rules);
 		tree.optimize();
 	});
 
 	suggestions.clear();
+	root = &tree;
 
-	if (root == nullptr) { root = &tree; }
-	// Skip empty nodes
-	while (std::get_if<std::monostate>(root) && root->next.size() == 1) root = root->next.front().get();
+	std::vector<std::string_view> substrings_to_match;
 
-	// TODO Walk tree to get good subset of suggestions
-	for (auto const& c : root->next) {
-		auto var = c.get();
-		if (auto x = std::get_if<std::string>(var)) { suggestions.push_back(*x); continue; }
-		if (auto x = std::get_if<fs::path>(var)) { suggestions.push_back(x->filename().string()); continue; }
+	std::string_view next = sv;
+outer:
+	for (;;) {
+		// Skip empty nodes
+		while (std::get_if<std::monostate>(root) && root->next.size() == 1) root = root->next.front().get();
+
+		std::cout << "Matching: " << std::quoted(next) << std::endl;
+		std::tie(sv, next) = utf8::split_at_ws(next);
+		std::cout << std::quoted(sv) << ' ' << std::quoted(next) << std::endl;
+
+		if (sv.empty()) {
+			// TODO Walk tree to get good subset of suggestions
+			for (auto const& c : root->next) {
+				auto var = c.get();
+
+				if (auto x = std::get_if<std::string>(var)) {
+					suggestions.push_back({ *x, var });
+					continue;
+				}
+
+				if (auto x = std::get_if<fs::path>(var)) {
+					suggestions.push_back({ x->filename().string(), var });
+					continue;
+				}
+			}
+			return fill_items(suggestions);
+		}
+
+		for (auto const& c : root->next) {
+			auto var = c.get();
+
+			if (auto x = std::get_if<fs::path>(var)) {
+				auto fname = utf8::to_lower(x->filename().string());
+
+				for (auto substr : substrings_to_match)
+					if (fname.find(substr) == std::string::npos)
+						goto skip_path;
+
+				if (fname.find(sv) != std::string::npos) {
+					suggestions.push_back({ fname, var });
+					continue;
+				}
+			}
+skip_path:
+
+			if (auto x = std::get_if<std::string>(var)) {
+				auto [g, e] = std::mismatch(x->begin(), x->end(), sv.begin(), sv.end());
+
+				if (g == x->begin() && e == sv.begin())
+					continue;
+				std::cout << "String: " << *x << '\n';
+
+				if (g != x->cend() && e == sv.end()) {
+					suggestions.push_back({ *x, var });
+					continue;
+				}
+
+				if (g == x->cend() && e == sv.end()) {
+					root = c.get();
+					goto outer;
+				}
+
+				if (g == x->cend() && e != sv.end()) {
+					error("0 1 not implemented yet");
+				}
+			}
+		}
+
+		if (!next.empty()) {
+			suggestions.clear();
+			substrings_to_match.push_back(sv);
+			goto outer;
+		}
+
+		return fill_items(suggestions);
 	}
-
-	fill_items(suggestions);
 }
 
 extern "C"
@@ -94,6 +166,13 @@ extern "C"
 			exit(1);
 		}
 
+		auto found = std::find_if(suggestions.begin(), suggestions.end(), [](auto const& el) {
+			return el.first.data() == sel->text; });
+
+		assert(found != suggestions.end());
+		assert(found->second->command);
+		auto command = found->second->eval();
+
 		int pipe[2];
 		::pipe(pipe);
 
@@ -103,8 +182,8 @@ extern "C"
 
 		close(STDOUT_FILENO);
 		dup2(pipe[1], STDOUT_FILENO);
+		std::cout << command << std::endl;
 		close(pipe[1]);
-		// place suggestion
 		close(STDOUT_FILENO);
 
 		cleanup();

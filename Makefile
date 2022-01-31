@@ -11,7 +11,7 @@ all: nlp-menu stest
 .c.o:
 	$(CC) -c $(CFLAGS) $<
 
-.cpp.o:
+%.o: %.cc lisp.cc unicode.cc
 	$(CXX) -c $(CXXFLAGS) $<
 
 config.h:

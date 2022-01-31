@@ -11,6 +11,8 @@
 #include <variant>
 #include <vector>
 
+#include "os-exec/os-exec.hh"
+
 namespace fs = std::filesystem;
 
 using namespace std::string_literals;
@@ -27,6 +29,14 @@ void ensure(bool cond, std::string_view message)
 {
 	if (cond) return;
 	error(message);
+}
+
+[[nodiscard]]
+std::string_view trim(std::string_view sv)
+{
+	while (!sv.empty() && std::isspace(sv.front())) sv.remove_prefix(1);
+	while (!sv.empty() && std::isspace(sv.back())) sv.remove_suffix(1);
+	return sv;
 }
 
 namespace lisp
@@ -169,20 +179,30 @@ struct Match : Match_Variant
 		return false;
 	}
 
-	std::optional<std::string_view> match(std::string_view sv)
+	std::string eval() const
 	{
-		while (!sv.empty() && std::isspace(sv.front())) sv.remove_prefix(1);
-		while (!sv.empty() && std::isspace(sv.back())) sv.remove_suffix(1);
+		assert(command);
 
-		if (auto const str = std::get_if<std::string>(this))
-			return str->starts_with(sv) ? std::optional(sv.substr(str->size())) : std::nullopt;
+		auto result = std::string{};
 
+		for (auto const& v : *command) {
+			switch (v.kind) {
+			case lisp::Value::Kind::Nil: continue;
+			case lisp::Value::Kind::Number: continue;
+			case lisp::Value::Kind::String: result += " " + os_exec::shell_quote(v.str); break;
+			case lisp::Value::Kind::Symbol:
+				if (v.str == "last") {
+					if (auto x = std::get_if<std::string>(this)) { result += " " + os_exec::shell_quote(*x); continue; }
+					if (auto x = std::get_if<fs::path>(this)) { result += " " + os_exec::shell_quote(x->string()); continue; }
+					error("this type is not supported yet");
+				}
+				error("unsupported symbol name");
+			case lisp::Value::Kind::List:
+				error("Execution of list is not supported yet");
+			}
+		}
 
-		auto const& re = std::get<std::regex>(*this);
-		std::match_results<std::string_view::const_iterator> result;
-		if (!std::regex_match(sv.cbegin(), sv.cend(), result, re))
-			return {};
-		return { std::string_view(result.suffix().first, result.suffix().second) };
+		return result;
 	}
 
 	// Evaluates rule, to this node and passes unevaluated to children
@@ -229,10 +249,11 @@ struct Match : Match_Variant
 					next->emplace<fs::path>(std::move(path));
 					if (std::next(rule) != rule_end)
 						next->put()->eval(std::next(rule), rule_end, command);
+
+					if (std::next(rule) == rule_end)
+						next->command = command;
 				}
 
-				if (std::next(rule) == rule_end)
-					this->command = command;
 				return this;
 			}
 
