@@ -5,12 +5,13 @@
 #include <iomanip>
 #include <iostream>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <regex>
+#include <set>
 #include <variant>
 #include <vector>
-#include <set>
 
 #include "os-exec/os-exec.hh"
 
@@ -149,23 +150,33 @@ fs::path resolve_home(fs::path path)
 
 std::vector<fs::path> find_dirs(fs::path root)
 {
+	std::map<fs::path, std::vector<fs::path>> cache;
+	if (auto m = cache.find(root); m != cache.end())
+		return m->second;
+
 	std::vector<fs::path> paths;
 
 	for (auto entry : fs::directory_iterator(resolve_home(root)))
 		if (entry.is_directory())
 			paths.push_back(fs::absolute(entry.path()));
 
+	cache.insert({ root, paths });
 	return paths;
 }
 
 std::vector<fs::path> find_all_executable(fs::path root)
 {
+	std::map<fs::path, std::vector<fs::path>> cache;
+	if (auto m = cache.find(root); m != cache.end())
+		return m->second;
+
 	std::vector<fs::path> paths;
 
 	for (auto entry : fs::recursive_directory_iterator(resolve_home(root)))
 		if (entry.is_regular_file() && (entry.status().permissions() & fs::perms::owner_exec) != fs::perms::none)
 			paths.push_back(fs::absolute(entry.path()));
 
+	cache.insert({ root, paths });
 	return paths;
 }
 

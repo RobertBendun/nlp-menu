@@ -24,8 +24,8 @@ LIBS = -L$(X11LIB) -lX11 $(XINERAMALIBS) $(FREETYPELIBS)
 
 # flags
 CPPFLAGS = -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\" $(XINERAMAFLAGS) $(INCS)
-CFLAGS   = -std=c99 -pedantic -Wall -Os $(CPPFLAGS) -ggdb
-CXXFLAGS =  -std=c++20 -Wall -Wextra $(CPPFLAGS) -ggdb
+CFLAGS   = -std=c99 -pedantic -Wall $(CPPFLAGS) -O3
+CXXFLAGS =  -std=c++20 -Wall -Wextra $(CPPFLAGS) -O3
 LDFLAGS  = $(LIBS)
 
 # compiler and linker

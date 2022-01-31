@@ -14,9 +14,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <regex>
+#include <chrono>
 
 #include "lisp.cc"
 #include "unicode.cc"
+
+namespace chrono = std::chrono;
 
 void fill_items(std::vector<std::pair<std::string, Match const*>>& sugg)
 {
@@ -52,6 +55,7 @@ void on_input(std::string_view sv)
 	sv = lowercase;
 
 	std::call_once(tree_initialized, [] {
+		auto start = chrono::system_clock::now();
 		std::ifstream stream("./wip.lisp");
 		std::string file{std::istreambuf_iterator<char>(stream), {}};
 		std::string_view code{file};
@@ -67,6 +71,9 @@ void on_input(std::string_view sv)
 
 		tree.eval(rules);
 		tree.optimize();
+		auto end = chrono::system_clock::now();
+
+		std::cout << "LISP initialization took " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << std::endl;
 	});
 
 	suggestions.clear();
