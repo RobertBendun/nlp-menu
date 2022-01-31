@@ -22,6 +22,9 @@ $(OBJ): arg.h config.h config.mk drw.h
 nlp-menu: dmenu.o drw.o util.o engine.o
 	$(CXX) -o $@ dmenu.o drw.o util.o engine.o $(LDFLAGS)
 
+lisp: lisp.cc
+	$(CXX) -o $@ $< -std=c++20 -Wall -Wextra -O3 -DMain
+
 stest: stest.o
 	$(CC) -o $@ stest.o $(LDFLAGS)
 

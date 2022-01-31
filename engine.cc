@@ -26,6 +26,7 @@ void fill_items(std::vector<std::pair<std::string, Match const*>>& sugg)
 		items[i].text = sugg[i].first.data();
 		items[i].left = i == 0 ? nullptr : &items[i-1];
 		items[i].right = i == sugg.size()-1 ? nullptr : &items[i+1];
+		items[i].out = 0;
 	}
 
 	if (sugg.empty()) {
@@ -64,7 +65,6 @@ void on_input(std::string_view sv)
 			rules.push_back(std::move(rule));
 		}
 
-		lisp::dump(rules);
 		tree.eval(rules);
 		tree.optimize();
 	});
@@ -80,10 +80,7 @@ outer:
 		// Skip empty nodes
 		while (std::get_if<std::monostate>(root) && root->next.size() == 1) root = root->next.front().get();
 
-		std::cout << "Matching: " << std::quoted(next) << std::endl;
 		std::tie(sv, next) = utf8::split_at_ws(next);
-		std::cout << std::quoted(sv) << ' ' << std::quoted(next) << std::endl;
-
 		if (sv.empty()) {
 			// TODO Walk tree to get good subset of suggestions
 			for (auto const& c : root->next) {
@@ -124,7 +121,6 @@ skip_path:
 
 				if (g == x->begin() && e == sv.begin())
 					continue;
-				std::cout << "String: " << *x << '\n';
 
 				if (g != x->cend() && e == sv.end()) {
 					suggestions.push_back({ *x, var });

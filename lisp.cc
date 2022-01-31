@@ -10,6 +10,7 @@
 #include <regex>
 #include <variant>
 #include <vector>
+#include <set>
 
 #include "os-exec/os-exec.hh"
 
@@ -70,7 +71,7 @@ namespace lisp
 	{
 		while (!s.empty()) {
 			for (; !s.empty() && std::isspace(s.front()); s.remove_prefix(1)) {}
-			if (s.starts_with('#')) { s.remove_prefix(s.find('\n')); } else { break; }
+			if (s.starts_with(';')) { s.remove_prefix(s.find('\n')); } else { break; }
 		}
 
 		if (s.empty()) return {};
@@ -146,6 +147,28 @@ fs::path resolve_home(fs::path path)
 	return resolved;
 }
 
+std::vector<fs::path> find_dirs(fs::path root)
+{
+	std::vector<fs::path> paths;
+
+	for (auto entry : fs::directory_iterator(resolve_home(root)))
+		if (entry.is_directory())
+			paths.push_back(fs::absolute(entry.path()));
+
+	return paths;
+}
+
+std::vector<fs::path> find_all_executable(fs::path root)
+{
+	std::vector<fs::path> paths;
+
+	for (auto entry : fs::recursive_directory_iterator(resolve_home(root)))
+		if (entry.is_regular_file() && (entry.status().permissions() & fs::perms::owner_exec) != fs::perms::none)
+			paths.push_back(fs::absolute(entry.path()));
+
+	return paths;
+}
+
 std::vector<fs::path> find_with_extension(fs::path root, std::vector<std::string_view> extensions)
 {
 	std::vector<fs::path> paths;
@@ -158,6 +181,22 @@ std::vector<fs::path> find_with_extension(fs::path root, std::vector<std::string
 	}
 
 	return paths;
+}
+
+std::vector<fs::path> find_all_processes()
+{
+	std::set<fs::path> paths;
+
+	for (auto entry : fs::recursive_directory_iterator("/proc/", fs::directory_options::skip_permission_denied)) {
+		auto p = entry.path();
+		if (p.filename() == "exe") {
+			try {
+				paths.insert(fs::canonical(p));
+			} catch (std::exception const&) {}
+		}
+	}
+
+	return { paths.begin(), paths.end() };
 }
 
 using Match_Variant = std::variant<std::monostate, std::string, std::regex, fs::path>;
@@ -231,7 +270,61 @@ struct Match : Match_Variant
 				}
 				return this;
 			}
-			if (rule->is_call_to("find-all-executable")) error("find-all-executable is not implemented yet");
+
+			if (rule->is_call_to("find-dirs")) {
+				auto arg = rule->cbegin();
+				auto const& root = (++arg)->str;
+
+				auto paths = find_dirs(root);
+
+				for (auto path : paths) {
+					auto next = put();
+					next->emplace<fs::path>(std::move(path));
+					if (std::next(rule) != rule_end)
+						next->put()->eval(std::next(rule), rule_end, command);
+
+					if (std::next(rule) == rule_end)
+						next->command = command;
+				}
+
+				return this;
+			}
+
+			if (rule->is_call_to("processes")) {
+				auto paths = find_all_processes();
+
+				for (auto path : paths) {
+					auto next = put();
+					next->emplace<fs::path>(std::move(path));
+					if (std::next(rule) != rule_end)
+						next->put()->eval(std::next(rule), rule_end, command);
+
+					if (std::next(rule) == rule_end)
+						next->command = command;
+				}
+
+				return this;
+			}
+
+			if (rule->is_call_to("find-all-executable")) {
+				auto arg = rule->cbegin();
+				auto const& root = (++arg)->str;
+
+				auto paths = find_all_executable(root);
+
+				for (auto path : paths) {
+					auto next = put();
+					next->emplace<fs::path>(std::move(path));
+					if (std::next(rule) != rule_end)
+						next->put()->eval(std::next(rule), rule_end, command);
+
+					if (std::next(rule) == rule_end)
+						next->command = command;
+				}
+
+				return this;
+			}
+
 			if (rule->is_call_to("find-all-with-extension")) {
 				auto arg = rule->cbegin();
 				auto const& extensions_declaration = *++arg;
@@ -266,28 +359,54 @@ struct Match : Match_Variant
 		return this;
 	}
 
-	void optimize()
+	bool optimize()
 	{
-		for (auto &child : next)
-			child->optimize();
+		bool try_again = true;
+		bool done_something = false;
 
-		// For all possible unordered pairs try unification
-		for (unsigned i = 0; i < next.size(); ++i) {
-			for (unsigned j = i+1; j < next.size(); ++j) {
-				if (*next[i] == *next[j]) {
-					std::move(next[j]->next.begin(), next[j]->next.end(), std::back_inserter(next[i]->next));
-					next.erase(next.begin() + j);
+		while (try_again) {
+			try_again = false;
+
+			for (auto &child : next)
+				try_again |= child->optimize();
+
+			// For all possible unordered pairs try unification
+			for (unsigned i = 0; i < next.size(); ++i) {
+				for (unsigned j = i+1; j < next.size(); ++j) {
+					if (*next[i] == *next[j]) {
+						std::move(next[j]->next.begin(), next[j]->next.end(), std::back_inserter(next[i]->next));
+						next.erase(next.begin() + j);
+						done_something = try_again = true;
+					}
+				}
+				try_again |= next[i]->optimize();
+			}
+
+			if (next.size() == 1 && std::get_if<std::monostate>(next.front().get())) {
+				auto succ = std::move(next.front());
+				next.clear();
+				next.reserve(succ->next.size());
+				std::move(succ->next.begin(), succ->next.end(), std::back_inserter(next));
+				done_something = try_again = true;
+			}
+
+			if (std::get_if<std::monostate>(this)) {
+				for (bool revisit = true; revisit;) {
+					revisit = false;
+					for (auto i = 0u; i < next.size(); ++i) {
+						if (std::get_if<std::monostate>(next[i].get())) {
+							std::move(next[i]->next.begin(), next[i]->next.end(), std::back_inserter(next));
+							next.erase(next.begin() + i);
+							try_again = true;
+							revisit = true;
+							break;
+						}
+					}
 				}
 			}
-			next[i]->optimize();
 		}
 
-		if (next.size() == 1 && std::get_if<std::monostate>(next.front().get())) {
-			auto succ = std::move(next.front());
-			next.clear();
-			next.reserve(succ->next.size());
-			std::move(succ->next.begin(), succ->next.end(), std::back_inserter(next));
-		}
+		return done_something;
 	}
 };
 
@@ -349,7 +468,7 @@ void Suggestion_Tree::eval(lisp::Value const& v)
 	}
 }
 
-#if 0
+#ifdef Main
 int main(int, char **argv)
 {
 	assert(*++argv);
@@ -367,7 +486,7 @@ int main(int, char **argv)
 			break;
 		rules.push_back(std::move(rule));
 	}
-	// dump(rules);
+	//dump(rules);
 
 	Suggestion_Tree tree;
 	tree.eval(rules);
